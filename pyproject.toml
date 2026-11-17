@@ -31,4 +31,4 @@ cache-keys = [{ file = "pyproject.toml" }, { file = "CMakeLists.txt" }, { file =
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tests", "."]
+pythonpath = ["tests", ".", "tests/backtest"]
