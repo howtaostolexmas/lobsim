@@ -42,7 +42,7 @@ _BOOK_SIDES = {"bid": Side.BUY, "ask": Side.SELL}
 _TRADE_SIDES = {"buy": Side.BUY, "sell": Side.SELL, "unknown": None}
 
 
-def _open_text(path: Path) -> TextIO:
+def open_text(path: Path) -> TextIO:
     path = Path(path)
     if path.suffix == ".gz":
         return gzip.open(path, "rt", newline="")
@@ -50,7 +50,7 @@ def _open_text(path: Path) -> TextIO:
 
 
 def read_l2(path: Path, inst: Instrument) -> Iterator[L2Row]:
-    with _open_text(path) as f:
+    with open_text(path) as f:
         reader = csv.DictReader(f)
         for rec in reader:
             try:
@@ -67,7 +67,7 @@ def read_l2(path: Path, inst: Instrument) -> Iterator[L2Row]:
 
 
 def read_trades(path: Path, inst: Instrument) -> Iterator[TradeRow]:
-    with _open_text(path) as f:
+    with open_text(path) as f:
         reader = csv.DictReader(f)
         for rec in reader:
             try:
