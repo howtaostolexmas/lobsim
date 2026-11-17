@@ -37,11 +37,26 @@ class OrderBook:
     # ---- commands ---------------------------------------------------------
 
     def add_limit(self, order_id: int, side: Side, price: int, qty: int) -> list[Event]:
+        reason = self._validate(order_id, qty, price)
+        if reason is not None:
+            return [Rejected(order_id, reason)]
         events: list[Event] = [Accepted(order_id)]
         trades, remaining = self._match(order_id, side, qty, limit_price=price)
         events.extend(trades)
         if remaining > 0:
             self._rest(_Resting(order_id, side, price, remaining))
+        return events
+
+    def add_market(self, order_id: int, side: Side, qty: int) -> list[Event]:
+        """Fill as much as possible now; cancel the rest. Never rests."""
+        reason = self._validate(order_id, qty, price=None)
+        if reason is not None:
+            return [Rejected(order_id, reason)]
+        events: list[Event] = [Accepted(order_id)]
+        trades, remaining = self._match(order_id, side, qty, limit_price=None)
+        events.extend(trades)
+        if remaining > 0:
+            events.append(Cancelled(order_id, remaining))
         return events
 
     def cancel(self, order_id: int) -> list[Event]:
@@ -79,6 +94,20 @@ class OrderBook:
         return None if order is None else order.qty
 
     # ---- internals --------------------------------------------------------
+
+    def _validate(self, order_id: int, qty: int, price: int | None) -> str | None:
+        """Return a rejection reason, or None if the order is valid.
+
+        Checks run in a fixed order so the reason is deterministic.
+        An id is only reserved while its order rests in the book.
+        """
+        if qty <= 0:
+            return "non_positive_qty"
+        if price is not None and price <= 0:
+            return "non_positive_price"
+        if order_id in self._orders:
+            return "duplicate_id"
+        return None
 
     def _match(
         self, taker_id: int, side: Side, qty: int, limit_price: int | None
