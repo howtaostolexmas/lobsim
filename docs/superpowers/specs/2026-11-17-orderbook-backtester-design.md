@@ -70,6 +70,21 @@ It then becomes the core of the backtester (B), so the finished project covers b
 performance story and the market-microstructure story. C is a possible later extension
 (a live feed can be one more event source).
 
+## Who builds it, and what that means
+
+Claude writes the code, and the owner studies it until they can defend every line in an
+interview (chosen by the owner). This shapes the work:
+
+- **Readable over clever.** Each optimization must be explainable in a sentence or two.
+  An unexplainable trick isn't worth its speedup.
+- **Small, focused commits** with messages that say *why*, so the owner can read the history
+  as a story.
+- **A study note per milestone** (`docs/notes/Mx-*.md`): how the code works, the design
+  decisions and their alternatives, and a list of likely interview questions with answers.
+- **C++ kept small.** Only the price-level book hot path is ported, in plain modern C++ with
+  no template tricks, so a Python-first student can learn and explain it.
+- The owner should be able to re-run every benchmark and test with one documented command.
+
 ## Decided
 
 - Approach: A, then B (chosen by the owner).
