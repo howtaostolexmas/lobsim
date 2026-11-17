@@ -63,6 +63,25 @@ Python↔C++ boundary and harness, not in the engine. Also, making cancel O(1) i
 from 29 µs to 0.4 µs, but did nothing on the shallow main workload. Measure before
 optimizing.
 
+## Real market data (M3)
+
+The project replays a full day of Binance BTCUSDT order-book data from
+[Tardis.dev](https://tardis.dev). That day has 10.2M L2 updates and 1.1M trades, and the
+replay keeps them in exact integer ticks on one arrival-time clock. The rebuilt book was
+checked against the source's own top-25 snapshots: **463,716 of 463,716 matched exactly.**
+Details and the chart are in [docs/benchmarks/M3-replay.md](docs/benchmarks/M3-replay.md).
+
+```bash
+uv run python -m lobsim.marketdata download  --day 2026-11-01 --symbol BTCUSDT   # ~86 MB
+uv run python -m lobsim.marketdata normalize --day 2026-11-01 --symbol BTCUSDT
+uv run python -m lobsim.marketdata validate  --day 2026-11-01 --symbol BTCUSDT
+uv run --group viz python -m lobsim.marketdata stats --day 2026-11-01 --symbol BTCUSDT --chart out.png
+```
+
+Without an API key, Tardis serves only day 1 of each month. Its terms forbid
+redistributing the raw data, so `data/` is git-ignored, the test fixtures are synthetic,
+and only aggregate charts and statistics are committed.
+
 ## What it does (M1)
 
 - **`OrderBook`**: limit orders, market orders and cancels with **price-time
@@ -115,7 +134,7 @@ only for *our own* orders, together with a queue-position model. The shared core
 
 - **M1** ✅ Correct order book and matching engine (this)
 - **M2** ✅ Profile, optimize, and port the engine to C++ via pybind11, with benchmarks
-- **M3** Download and replay real L2 crypto market data
+- **M3** ✅ Download and replay real L2 crypto market data
 - **M4** Backtester with latency, queue position and fees
 
 See `docs/superpowers/specs/` for the full design and `docs/notes/` for study notes.
