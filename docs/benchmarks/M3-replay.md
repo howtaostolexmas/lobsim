@@ -30,7 +30,7 @@ uv run --group viz python -m lobsim.marketdata stats --day 2026-11-01 --symbol B
 | **Snapshots matched exactly (top 25 levels, both sides)** | **463,716 (100%)** |
 | Crossed books at snapshot times | 0 |
 | Crossed books after any batch, all day | 0 |
-| Full-day replay, Parquet → `LevelBook` | 12.7 s (800k L2 rows/s, 67.6k batches/s) |
+| Full-day replay, Parquet → `LevelBook` | 13.2 s (768k L2 rows/s, 64.9k batches/s; an earlier run took 12.7 s, so expect ±5%) |
 | Spread, time-weighted | p50 1 tick, p99 1 tick; 1 tick wide **99.99%** of the time |
 
 ![Mid price and mean spread, 10-minute aggregates](m3-mid-spread.png)
@@ -41,8 +41,9 @@ uv run --group viz python -m lobsim.marketdata stats --day 2026-11-01 --symbol B
   feed matches our rebuilt top 25 exactly. That covers each snapshot timestamp, every
   level, and both sides.
 - **The "crossed book" handling was never exercised.** The book was never crossed on
-  this day. The uncrossing rule in `validate.top_uncrossed` is covered by unit tests
-  only, not by real data.
+  this day. The uncrossing rule in `validate.top_uncrossed` removes the best bid and best
+  ask in pairs. That is our *approximation* of how the source cleans crossed levels, and
+  it is covered by unit tests only, not by real data.
 - **BTCUSDT on Binance is a one-tick market.** The spread is 0.01 USDT almost all day.
   So for M4, a passive order's fill depends almost entirely on its **queue position**
   at the best price, not on price improvement. That is why M4 models the queue.

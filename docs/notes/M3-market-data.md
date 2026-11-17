@@ -30,6 +30,14 @@ can only react to data once it has arrived. Ordering by exchange time would let 
 backtest act on information before it could have been received. That is **look-ahead
 bias**, the classic way backtests lie.
 
+Why exchange time misleads in practice:
+- It quietly assumes **zero latency** between the exchange and you.
+- Different streams (book vs trades) can reach you in a different order than their
+  exchange stamps suggest. So exchange-time ordering can put a trade *before* a book update
+  that you actually received first.
+
+Arrival time is what a live system really experiences.
+
 Two more details:
 - **Tie-break.** When a book message and a trade arrive at the same µs, the book goes
   first. Within one file, the original order is kept.
@@ -52,7 +60,9 @@ this size", where 0 means the level is gone.
    snapshot, not on every snapshot message.
 
 A **batch** is the rows that share one `local_timestamp` and one snapshot flag
-(`replay.py:46`, `batches`). That is one exchange message, applied all at once.
+(`replay.py:46`, `batches`). Normally that is one exchange message, applied all at once.
+If two messages arrive in the very same microsecond they merge into one batch, which is
+harmless, since nothing could observe the book between them.
 
 ## 4. Why exact decimal parsing
 
@@ -67,9 +77,14 @@ waiting to happen:
 ```
 
 A price could land on the wrong tick, and then two equal prices would stop comparing
-equal. `to_units` (`instrument.py:15`) moves the decimal point in the string itself:
+equal. `to_units` (`instrument.py:22`) moves the decimal point in the string itself:
 `"77582.03"` with 2 decimals becomes `7758203`. Anything that isn't exactly on the tick
 grid raises an error instead of being rounded.
+
+The parser is deliberately strict. It accepts only plain, unsigned ASCII numbers with an
+optional exponent, such as `"1e-05"`. Exponents are handled with exact integer
+arithmetic, because Python's `Decimal` arithmetic rounds at 28 significant digits by
+default. Signs, spaces, `_` and non-ASCII digits like `'٣'` all raise an error.
 
 On the real data, all 10.2M L2 rows and 1.1M trades parsed exactly, which also confirms
 the tick (0.01) and lot (0.00001) sizes.
@@ -90,19 +105,29 @@ in memory and never leaves a half-written file.
 ## 6. How we know the replay is right
 
 Tardis also publishes `book_snapshot_25`, the top 25 levels each time they change, built
-from the same feed. For each of those snapshots, `validate` (`validate.py:78`) does two
+from the same feed. For each of those snapshots, `validate` (`validate.py:79`) does two
 things:
 - applies every L2 batch with `ts_local ≤` the snapshot's time
 - compares our top 25 levels on each side with the snapshot
 
-**Result: 463,716 of 463,716 matched exactly.** That one number covers the parsing, the
-ordering, batching, the snapshot rules, and `LevelBook`.
+**Result: 463,716 of 463,716 matched exactly.** That one number covers several things:
+- the parsing
+- the L2 ordering and batching
+- the snapshot rules
+- `LevelBook`
+
+It does *not* check how book updates and trades are merged. The tie-break rule is covered
+by unit tests only.
 
 **Crossed books.** Sometimes a rebuilt L2 book shows best bid ≥ best ask for a moment,
-when the two sides' updates arrive in different messages. Tardis drops crossed levels
-from its snapshots, and `top_uncrossed` (`validate.py:62`) does the same. On this day the
-book was **never** crossed, so this code is tested only by unit tests. That's worth
-saying honestly if asked.
+when the two sides' updates arrive in different messages. Tardis says its snapshots drop
+crossed levels, but not exactly how. One plausible rule is that it removes stale levels
+on the side opposite the newest update.
+
+`top_uncrossed` (`validate.py:62`) uses a simpler **approximation**: it removes the best
+bid and best ask together while they cross. On this day the book was **never** crossed,
+so we could not check the approximation against the source. It is covered by unit tests
+only. Say exactly that if asked.
 
 ## 7. Data licence: what we may publish
 
@@ -133,13 +158,14 @@ statistics. So:
    wrong tick. We parse strings directly to integer ticks and reject anything off-grid.
 6. **What is a crossed book, and why can a rebuilt one be crossed?**
    Best bid ≥ best ask. In a rebuilt book it's an artifact of the two sides' updates
-   arriving in separate messages. We remove crossed levels pairwise when comparing, like
-   the source does. It didn't occur on our day.
+   arriving in separate messages. When comparing, we remove crossed levels in pairs. That
+   is an approximation of the source's rule, and we couldn't verify it because no crossing
+   happened on our day.
 7. **Why Parquet over CSV?**
    It is typed, columnar, compressed and streamable. We parse the text once, then replay
    fast.
 8. **How fast is your replay?**
-   About 800k L2 rows per second in pure Python, with a full day in 12.7 s. M2 showed C++
+   About 770–800k L2 rows per second in pure Python, so a full day takes about 13 s. M2 showed C++
    would be about 20× faster for the engine itself, but only if we batch across the
    boundary.
 9. **What did you learn about the market from the data?**

@@ -64,8 +64,9 @@ def top_uncrossed(book: LevelBook, n: int) -> tuple[Levels, Levels]:
 
     A replayed L2 book can be briefly crossed (best bid >= best ask) when
     updates for the two sides arrive in separate messages. The source drops
-    crossed levels from its snapshots; we do the same by removing the best
-    bid and best ask together while they cross.
+    crossed levels from its snapshots; as an approximation of its (undocumented)
+    rule we remove the best bid and best ask together while they cross. Not yet
+    checked against real data: the 2026-11-01 replay was never crossed.
     """
     bids = book.depth(Side.BUY, n + 50)  # extra room: crossed levels may be dropped
     asks = book.depth(Side.SELL, n + 50)
