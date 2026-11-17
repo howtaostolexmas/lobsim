@@ -1,0 +1,10 @@
+{
+  "ops_per_sec": 16264526.255011506,
+  "mean_ns": 61.4835,
+  "impl": "cpp-raw",
+  "n": 1000000,
+  "seed": 42,
+  "runs": 5,
+  "python": "3.12.13",
+  "machine": "arm64 / macOS-26.5.1-arm64-arm-64bit"
+}

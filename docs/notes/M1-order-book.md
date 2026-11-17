@@ -2,6 +2,11 @@
 
 Read this alongside the code. The goal is to explain every line in an interview.
 
+> **Updated in M2:** a price level is now an `OrderedDict` with a cached total (O(1)
+> cancel), and line numbers have moved. This note describes the M1 design (`git show
+> f38b36a:src/lobsim/order_book.py`); see [M2-performance.md](M2-performance.md) for what
+> changed and why.
+
 ## 1. Walkthrough: what happens in `add_limit`
 
 Example: the book has a SELL of 5 @ 101 (order 1). We call

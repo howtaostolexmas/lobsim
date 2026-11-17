@@ -47,6 +47,22 @@ Trade(maker_id=2, taker_id=3, price=102, qty=2, aggressor=<Side.BUY: 'buy'>, mak
 The buy order sweeps the 101 level, then takes 2 at 102. It is fully filled, so
 nothing rests on the bid side.
 
+## Performance (M2)
+
+Apple M3, 1M-op seeded workload, median of 5 runs. Full method and tables are in
+[docs/benchmarks/M2.md](docs/benchmarks/M2.md).
+
+| Engine | Throughput |
+|---|---:|
+| Python (M1 baseline) | 0.76M ops/sec |
+| C++ called per op from Python | 1.11M ops/sec |
+| C++ with the whole op list inside C++ | **16.3M ops/sec (21×)** |
+
+The headline lesson: per-op calls from Python spend about 93% of their time crossing
+the Python↔C++ boundary. Also, making cancel O(1) in Python cut a deep-level cancel
+from 30 µs to 0.4 µs, but did nothing on the shallow main workload. Measure before
+optimizing.
+
 ## What it does (M1)
 
 - **`OrderBook`**: limit orders, market orders and cancels with **price-time
@@ -54,7 +70,8 @@ nothing rests on the bid side.
   `Trade`, `Cancelled`.
 - **`LevelBook`**: an L2 book holding only total quantity per price, for replaying
   market data later.
-- Both are built on **`PriceLevels`**, a sorted map from price to value that
+- **`FastOrderBook`**: the same engine in C++ (`src/cpp/`), with an identical API.
+- Both Python books are built on **`PriceLevels`**, a sorted map from price to value that
   iterates best price first.
 
 How this carries into the backtester (M4): real L2 data has no individual orders, so
@@ -66,12 +83,12 @@ only for *our own* orders, together with a queue-position model. The shared core
 
 - **Integer prices and quantities.** Prices are in ticks and quantities are in lots.
   Floats would make `0.1 + 0.2 != 0.3` a matching bug.
-- **Data structures.** Each side is a `SortedDict` of price → `deque` of orders, plus a
-  dict from order id to order:
+- **Data structures.** Each side is a `SortedDict` of price → level (an `OrderedDict` of
+  orders plus a cached total), and there is a dict from order id to order:
   - Best price: O(1) in practice (sortedcontainers reads the first/last key directly).
   - Adding a new price level: O(log n).
-  - Matching at a level: pops from the front of a deque, O(1).
-  - Finding an order to cancel: O(1).
+  - Matching at a level: takes the oldest order, O(1).
+  - Cancel: O(1) to find and O(1) to remove.
 - **Trades happen at the maker's price.** The resting order set the price; the
   incoming order accepted it. This is how real exchanges work.
 - **No separate partial-fill event.** A `Trade` carries `maker_remaining` and
@@ -87,14 +104,17 @@ only for *our own* orders, together with a queue-position model. The shared core
   each) and requires both engines to emit identical events and depth.
   Other properties check that the book never stays crossed and that every order's
   quantity is conserved.
-- **Known cost: cancel is O(orders at that price).** The order is found in O(1), but
-  removing it from the middle of a deque is a scan. This is the first profiling
-  target in M2.
+- **Cancel is O(1)** (since M2). Each level is an `OrderedDict`, which is a hash
+  table plus a linked list, keyed by order id, with a cached total quantity. In M1 it
+  was a `deque`, where cancel had to scan the level.
+- **Two engines, one test suite.** `OrderBook` (Python) and `FastOrderBook` (C++ via
+  pybind11) both run every test, including the property tests, through a parametrized
+  `make_book` fixture.
 
 ## Roadmap
 
 - **M1** ✅ Correct order book and matching engine (this)
-- **M2** Profile, optimize, and port the hot path to C++ via pybind11, with benchmarks
+- **M2** ✅ Profile, optimize, and port the engine to C++ via pybind11, with benchmarks
 - **M3** Download and replay real L2 crypto market data
 - **M4** Backtester with latency, queue position and fees
 
