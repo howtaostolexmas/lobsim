@@ -44,6 +44,7 @@ class TradeRow(NamedTuple):
 
 _BOOK_SIDES = {"bid": Side.BUY, "ask": Side.SELL}
 _TRADE_SIDES = {"buy": Side.BUY, "sell": Side.SELL, "unknown": None}
+_SNAPSHOT_FLAGS = {"true": True, "false": False}
 
 
 def open_text(path: Path) -> TextIO:
@@ -61,7 +62,7 @@ def read_l2(path: Path, inst: Instrument) -> Iterator[L2Row]:
                 yield L2Row(
                     int(rec["timestamp"]),
                     int(rec["local_timestamp"]),
-                    rec["is_snapshot"] == "true",
+                    _lookup(_SNAPSHOT_FLAGS, rec["is_snapshot"], "is_snapshot"),
                     _lookup(_BOOK_SIDES, rec["side"]),
                     inst.price(rec["price"]),
                     inst.qty(rec["amount"]),
@@ -87,11 +88,11 @@ def read_trades(path: Path, inst: Instrument) -> Iterator[TradeRow]:
                 raise ValueError(f"{path}, line {reader.line_num}: {e}") from None
 
 
-def _lookup(table: dict, key: str):
+def _lookup(table: dict, key: str, what: str = "side"):
     try:
         return table[key]
     except KeyError:
-        raise ValueError(f"unknown side {key!r}") from None
+        raise ValueError(f"unknown {what} {key!r}") from None
 
 
 # ---- downloading -------------------------------------------------------------

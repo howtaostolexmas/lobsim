@@ -70,3 +70,13 @@ def test_unknown_book_side_raises(tmp_path):
     )
     with pytest.raises(ValueError, match="middle"):
         list(read_l2(bad, TEST_INST))
+
+
+def test_unknown_snapshot_flag_raises(tmp_path):
+    bad = tmp_path / "bad.csv"
+    bad.write_text(
+        "exchange,symbol,timestamp,local_timestamp,is_snapshot,side,price,amount\n"
+        "test,TEST,1,1,True,bid,100.00,1\n"
+    )
+    with pytest.raises(ValueError, match="is_snapshot"):
+        list(read_l2(bad, TEST_INST))

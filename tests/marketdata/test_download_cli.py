@@ -77,3 +77,19 @@ def test_cli_normalize_validate_stats(data_dir, capsys):
     assert "checked 4" in out and "matched 3" in out
     assert cli.main(["stats", *common]) == 0
     assert "batches" in capsys.readouterr().out
+
+
+def test_buckets_survive_one_sided_gap_spanning_buckets():
+    from lobsim import Side
+    from lobsim.marketdata.tardis import L2Row
+
+    rows = [
+        L2Row(0, 0, True, Side.BUY, 100, 1),
+        L2Row(0, 0, True, Side.SELL, 101, 1),  # spread 1, mid 100.5
+        L2Row(50, 50, False, Side.SELL, 101, 0),  # one-sided from 50 to 420
+        L2Row(420, 420, False, Side.SELL, 102, 1),  # spread 2, mid 101
+        L2Row(480, 480, False, Side.BUY, 100, 2),  # same spread; replay ends at 480
+    ]
+    s = replay_stats(iter(rows), iter([]), bucket_us=100)
+    assert s.spread_time_us == {1: 50, 2: 60}
+    assert s.buckets == [(0, 100.5, 1.0), (400, 101.0, 2.0)]

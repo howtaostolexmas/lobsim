@@ -22,7 +22,9 @@ class ReplayStats:
     seconds: float = 0.0  # wall-clock replay time
     # Time-weighted spread: spread in ticks -> microseconds spent at that spread.
     spread_time_us: dict[int, int] = field(default_factory=dict)
-    # Per 10-minute bucket: (bucket start us, mid at bucket end, time-weighted mean spread).
+    # Per 10-minute bucket with any two-sided time: (bucket start us, last two-sided
+    # mid seen by the bucket's end, time-weighted mean spread). Buckets with no
+    # two-sided, uncrossed time are left out.
     buckets: list[tuple[int, float, float]] = field(default_factory=list)
 
 
@@ -48,18 +50,24 @@ def replay_stats(
         bucket_weighted = bucket_time = 0
 
     def account(until: int) -> None:
-        """Credit the spread in force from `since` up to `until`, split by bucket."""
+        """Advance the clock from `since` to `until`.
+
+        Walks every 10-minute boundary on the way (closing finished buckets)
+        whether or not a valid spread is in force, but only credits time to
+        the spread statistics while the book is two-sided and uncrossed.
+        """
         nonlocal since, bucket_start, bucket_weighted, bucket_time
-        while current_spread is not None and since < until:
-            end = min(until, bucket_start + bucket_us)
-            spread_time[current_spread] += end - since
-            bucket_weighted += current_spread * (end - since)
-            bucket_time += end - since
+        while since < until:
+            boundary = bucket_start + bucket_us
+            end = min(until, boundary)
+            if current_spread is not None:
+                spread_time[current_spread] += end - since
+                bucket_weighted += current_spread * (end - since)
+                bucket_time += end - since
             since = end
-            if since == bucket_start + bucket_us:
-                close_bucket(bucket_start)
-                bucket_start += bucket_us
-        since = until
+            if since == boundary:
+                close_bucket(bucket_start)  # skipped inside if no two-sided time
+                bucket_start = boundary
 
     started = time.perf_counter()
     counting_rows = _Counting(l2_rows)
@@ -69,7 +77,10 @@ def replay_stats(
             continue
         stats.batches += 1
         if bucket_start is None:
+            # Align buckets to whole multiples of bucket_us since the epoch
+            # (whole 10-minute marks in UTC) and start the clock here.
             bucket_start = event.ts_local - event.ts_local % bucket_us
+            since = event.ts_local
         account(event.ts_local)
         replayer.apply(event)
         bid, ask = replayer.book.best_bid(), replayer.book.best_ask()
