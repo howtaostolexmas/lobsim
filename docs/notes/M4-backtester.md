@@ -57,7 +57,8 @@ check this:
 ## 3. The queue model, with a worked example
 
 L2 data says "price 100 has 5 BTC", but not who is in line. So for each of our resting
-orders we keep **`ahead`**, an estimate of the quantity in front of us (`exchange.py:52`).
+orders we keep **`ahead`**, an estimate of the quantity in front of us (`_SimOrder` in
+`src/lobsim/backtest/exchange.py`).
 
 We join a bid at 100 for 3 lots, when 5 lots are visible:
 
@@ -74,14 +75,24 @@ Two further rules:
   size was ahead of us, which is **optimistic**.
 - If the opposite best price reaches ours, we fill fully.
 
-**Why `min` and not subtraction for book updates?** The same trade shows up twice in the
-data, once as a trade print and once as the level shrinking. Subtracting both would count
-it twice. `min` makes the two events idempotent, whichever arrives first. Both orders are
-tested.
+**The same trade shows up twice in the data**, once as a trade print and once as the
+level shrinking. We must not subtract it twice. It depends on which arrives first:
+- **Trade first, then book.** The trade reduces `ahead`. Then the book update does
+  `ahead = min(ahead, new size)`, which changes nothing. That is why we use `min` and not
+  subtraction.
+- **Book first, then trade, at the same µs.** This is the order our replay uses on a tie.
+  The book update lowers `ahead` and *remembers* how much it dropped (`drop_qty`). The
+  trade is matched against that remembered drop first, and only the rest reduces `ahead`.
+
+  An earlier version missed this case and produced phantom fills. Review caught it, and
+  the test now asserts no fill. It affected only 3 fills on our day.
+- **Book first, trade at a different µs.** These are counted as two events. That
+  over-counts and is an optimistic, documented limit. The depth and trade feeds are
+  separate streams, so this can happen.
 
 ## 4. Aggressive orders: IOC because of no market impact
 
-When our order crosses on arrival, `_take` (`exchange.py:141`) walks the visible opposite
+When our order crosses on arrival, `_take` (`exchange.py:156`) walks the visible opposite
 levels, best first, and fills as **taker**. Then it **cancels the rest**.
 
 Why not let the rest sit on the book? We never remove liquidity from the replayed book,
@@ -150,8 +161,9 @@ This backtester is the tool you would use to test each of those ideas.
    Adverse selection. Passive quotes get filled when the price is about to move through
    them. The spread earned (0.0006 bps) is far smaller than that loss (about 1.5 bps).
 7. **Why didn't lower latency help?**
-   It increased the number of fills but didn't change the per-fill edge, which was
-   negative. Latency amplifies an edge; it doesn't create one.
+   It increased the filled *volume* (21.2 vs 13.4 BTC) but not the per-BTC edge, which
+   stayed negative at about −1.5 bps. So the total loss grew. The number of fills barely
+   changed (27,111 vs 27,284). Latency amplifies an edge; it doesn't create one.
 8. **How do you make results reproducible?**
    The input is deterministic, and ties are broken by fixed priorities plus a sequence
    number. There's no randomness. The JSON leaves out wall-clock time, and two full-day
@@ -169,6 +181,12 @@ This backtester is the tool you would use to test each of those ideas.
       the adverse selection comes from.
     - Market impact for aggressive orders.
     - A smarter strategy, for example skewing quotes on book imbalance.
-12. **What's the difference between fill ratio and fill rate here?**
+12. **What does the fill ratio tell you, and what doesn't it?**
     Fill ratio = filled quantity ÷ quantity placed. It was 61% by default. A high ratio
-    isn't good on its own: here the fills were adversely selected.
+    isn't good on its own: here the fills were adversely selected. Fill *quality* matters
+    more than fill *count*.
+13. **Can your strategy breach its position limit?**
+    Briefly, by one quote size. The limit is checked against the position the strategy
+    knows about, while another quote may still be live or its cancel may still be in
+    flight. On our day max |position| equalled the limit. A real system would also check
+    risk at the exchange gateway.

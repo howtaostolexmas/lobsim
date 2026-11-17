@@ -121,8 +121,10 @@ zero-fee, zero-latency and 10 ms runs, are in
   - A trade *through* our price, or the opposite side moving onto it, fills our whole
     remainder.
   - When a level shrinks, the queue ahead of us shrinks with it. We assume the cancelled
-    size was ahead of us, which is **optimistic**. A trade and the book update reporting
-    it never count twice.
+    size was ahead of us, which is **optimistic**.
+  - A trade and the book update reporting it count once if they arrive in either order
+    at the same µs. If they arrive at different µs they count twice, which is also
+    optimistic.
 - **Cancels** take effect when they reach the exchange. A fill that lands first wins, and
   the cancel is then rejected.
 - **Limits:**

@@ -24,10 +24,10 @@ uv run python -m lobsim.backtest --day 2026-11-01 --symbol BTCUSDT --order-laten
 
 | Run | PnL after fees (USDT) | Gross PnL (USDT) | Fees (USDT) | Volume (BTC) maker / taker | Fills | Fill ratio | Gross per BTC traded |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Default (1 ms / 1 ms, 10 bps) | −1,210.83 | −162.85 | 1,047.98 | 13.277 / 0.168 | 27,287 | 61.3% | −12.11 USDT (−1.55 bps) |
-| Zero fees | −162.85 | −162.85 | 0 | 13.277 / 0.168 | 27,287 | 61.3% | −12.11 USDT (−1.55 bps) |
+| Default (1 ms / 1 ms, 10 bps) | −1,210.83 | −162.85 | 1,047.98 | 13.277 / 0.168 | 27,284 | 61.3% | −12.11 USDT (−1.55 bps) |
+| Zero fees | −162.85 | −162.85 | 0 | 13.277 / 0.168 | 27,284 | 61.3% | −12.11 USDT (−1.55 bps) |
 | Zero latency | −1,903.35 | −254.32 | 1,649.03 | 21.155 / 0.000 | 27,111 | 71.4% | −12.02 USDT (−1.54 bps) |
-| 10 ms / 10 ms | −984.07 | −118.42 | 865.65 | 9.937 / 1.169 | 25,037 | 56.7% | −10.66 USDT (−1.37 bps) |
+| 10 ms / 10 ms | −984.07 | −118.42 | 865.65 | 9.937 / 1.169 | 25,034 | 56.7% | −10.66 USDT (−1.37 bps) |
 
 JSON for each run: `m4-default.json`, `m4-zero-fees.json`, `m4-zero-latency.json`, `m4-10ms.json`.
 Max |position| was 0.01 BTC (the limit) in every run.
@@ -62,6 +62,10 @@ These are restated in the README.
 - **Queue position is estimated, not known.** L2 data has no individual orders.
   - When a level shrinks, we assume the cancelled size was *ahead* of us. That is
     optimistic.
+  - A level shrink and its trade print at the *same* µs are counted once. If they arrive
+    at *different* µs, they count as two events, which over-counts and is optimistic.
+  - Position can briefly overshoot the strategy's limit by one quote size while a cancel
+    is in flight. It didn't happen on this day: max |position| equalled the limit.
   - A trade that goes through our price, or a market that moves through it, fills our
     whole remainder. Without impact we can't tell how much of it would really have filled.
 - Trades with an unknown taker side are ignored by the queue model.
