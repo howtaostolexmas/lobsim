@@ -1,4 +1,4 @@
-"""Tardis.dev CSV files: typed row readers (and, later, the downloader).
+"""Tardis.dev CSV files: download them, and read them as typed rows.
 
 Column layouts (timestamps are microseconds since the Unix epoch, UTC):
   incremental_book_L2: exchange,symbol,timestamp,local_timestamp,is_snapshot,side,price,amount
@@ -12,9 +12,13 @@ from __future__ import annotations
 
 import csv
 import gzip
-from collections.abc import Iterator
+import shutil
+import urllib.error
+import urllib.request
+from collections.abc import Callable, Iterator
+from datetime import date
 from pathlib import Path
-from typing import NamedTuple, TextIO
+from typing import BinaryIO, NamedTuple, TextIO
 
 from lobsim.marketdata.instrument import Instrument
 from lobsim.types import Side
@@ -88,3 +92,61 @@ def _lookup(table: dict, key: str):
         return table[key]
     except KeyError:
         raise ValueError(f"unknown side {key!r}") from None
+
+
+# ---- downloading -------------------------------------------------------------
+
+BASE_URL = "https://datasets.tardis.dev/v1"
+GZIP_MAGIC = b"\x1f\x8b"
+
+
+def tardis_url(exchange: str, data_type: str, day: date, symbol: str) -> str:
+    return f"{BASE_URL}/{exchange}/{data_type}/{day:%Y/%m/%d}/{symbol}.csv.gz"
+
+
+def _urllib_fetch(url: str, out: BinaryIO) -> None:
+    request = urllib.request.Request(url, headers={"User-Agent": "lobsim"})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        shutil.copyfileobj(response, out, length=1 << 20)
+
+
+def download(
+    exchange: str,
+    data_type: str,
+    day: date,
+    symbol: str,
+    dest_dir: Path,
+    fetch: Callable[[str, BinaryIO], None] = _urllib_fetch,
+) -> Path:
+    """Download one Tardis CSV file, or return it if it is already there.
+
+    The file is written to a .part name first and renamed only once complete
+    and checked, so an interrupted download never looks like a finished one.
+    """
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    final = dest_dir / f"{exchange}_{data_type}_{day:%Y-%m-%d}_{symbol}.csv.gz"
+    if final.exists():
+        return final
+
+    part = final.with_name(final.name + ".part")
+    url = tardis_url(exchange, data_type, day, symbol)
+    try:
+        with part.open("wb") as out:
+            fetch(url, out)
+        with part.open("rb") as f:
+            if f.read(2) != GZIP_MAGIC:
+                raise ValueError(f"{url} did not return a gzip file")
+    except urllib.error.HTTPError as e:
+        part.unlink(missing_ok=True)
+        if e.code == 401:
+            raise RuntimeError(
+                f"{url}: 401 Unauthorized. Without an API key, Tardis only serves "
+                "day 1 of each month (e.g. 2026-11-01)."
+            ) from None
+        raise
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
+    part.replace(final)
+    return final

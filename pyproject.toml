@@ -12,6 +12,9 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pytest>=8", "hypothesis>=6"]
+viz = [
+    "matplotlib>=3.11.2",
+]
 
 [build-system]
 requires = ["scikit-build-core>=0.10", "pybind11>=2.13"]

@@ -13,7 +13,7 @@ def test_read_snapshots_parses_levels_and_stops_at_empty(fixture_snap):
 
 
 def test_validate_counts_matches_and_reports_mismatch(fixture_l2, fixture_snap):
-    report = validate(read_l2(fixture_l2, TEST_INST), read_snapshots(fixture_snap, TEST_INST), n=2)
+    report = validate(read_l2(fixture_l2, TEST_INST), read_snapshots(fixture_snap, TEST_INST))
     assert report.checked == 4 and report.matched == 3
     assert report.first_mismatches[0]["ts_local"] == 400
     assert report.first_mismatches[0]["expected_asks"] == [(9850, 9999)]
