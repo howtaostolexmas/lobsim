@@ -73,8 +73,28 @@ def test_trade_then_book_update_same_us_no_double_count():
 def test_book_update_then_trade_same_us_no_double_count():
     ex = book()
     ex.submit_limit(10, 1, BUY, 100, 3)
-    assert ex.on_book(upd(20, (BUY, 100, 1))) == []  # ahead 5 -> 1
-    assert ex.on_trade(tr(20, SELL, 100, 4)) == [OrderFilled(20, 1, BUY, 100, 3, M, 0)]
+    assert ex.on_book(upd(20, (BUY, 100, 1))) == []  # ahead 5 -> 1 (the trade, seen early)
+    assert ex.on_trade(tr(20, SELL, 100, 4)) == []  # same µs: already counted, no phantom fill
+    assert ex.queue_ahead(1) == 1
+    # a further trade still works normally
+    assert ex.on_trade(tr(30, SELL, 100, 2)) == [OrderFilled(30, 1, BUY, 100, 1, M, 2)]
+
+
+def test_book_drop_only_absorbs_trades_in_the_same_us():
+    # Known optimistic limit: a drop at one µs and a trade at a later µs count separately.
+    ex = book()
+    ex.submit_limit(10, 1, BUY, 100, 3)
+    ex.on_book(upd(20, (BUY, 100, 1)))
+    assert ex.on_trade(tr(21, SELL, 100, 4)) == [OrderFilled(21, 1, BUY, 100, 3, M, 0)]
+
+
+def test_book_drop_absorbs_at_most_its_size():
+    ex = book()
+    ex.submit_limit(10, 1, BUY, 100, 3)
+    ex.on_book(upd(20, (BUY, 100, 3)))  # ahead 5 -> 3, drop 2
+    # trade 4: 2 were already counted by the drop, 2 more reduce ahead 3 -> 1
+    assert ex.on_trade(tr(20, SELL, 100, 4)) == []
+    assert ex.queue_ahead(1) == 1
 
 
 def test_market_moves_through_resting_bid():

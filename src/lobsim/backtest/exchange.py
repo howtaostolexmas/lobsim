@@ -10,8 +10,13 @@ our price. L2 data has no individual orders, so this has to be a model:
     goes below zero, the excess fills us (as maker).
   - Trade through our price: we would have been hit first -> fill fully.
   - Level shrinks to q: ahead = min(ahead, q). We assume the size that left
-    was in front of us (optimistic). Using min() also means a trade and the
-    book update that reports the same trade never count twice.
+    was in front of us (optimistic).
+  - The same trade usually shows up twice: as a trade print and as the level
+    shrinking. Trade first, then book: min() makes the book update a no-op.
+    Book first, then trade at the *same* µs: the drop is remembered and the
+    trade is first matched against it, so it is not subtracted again. A drop
+    and a trade at *different* µs are treated as separate events, which can
+    over-count (an optimistic, documented limit).
   - Market moves through us (opposite best reaches our price): fill fully.
 
 Aggressive orders (market orders, or limits that cross on arrival) fill at
@@ -47,6 +52,8 @@ class _SimOrder:
     price: int
     qty: int  # remaining
     ahead: int  # estimated quantity queued in front of us
+    drop_ts: int = -1  # µs of the last book update that shrank `ahead`
+    drop_qty: int = 0  # by how much: a same-µs trade at our price is matched against this
 
 
 class SimExchange:
@@ -73,8 +80,11 @@ class SimExchange:
         else:
             for side, price, qty in batch.levels:
                 for o in self._orders.values():
-                    if o.side is side and o.price == price:
-                        o.ahead = min(o.ahead, qty)
+                    if o.side is side and o.price == price and qty < o.ahead:
+                        if o.drop_ts != batch.ts_local:
+                            o.drop_ts, o.drop_qty = batch.ts_local, 0
+                        o.drop_qty += o.ahead - qty
+                        o.ahead = qty
         return self._fill_if_market_crossed_us(batch.ts_local)
 
     def on_trade(self, trade: TradePrint) -> list[Notice]:
@@ -88,7 +98,12 @@ class SimExchange:
             if _better_for_taker_than(o, trade.price):
                 out.append(self._fill(trade.ts_local, o, o.qty))  # traded through us
             elif trade.price == o.price:
-                o.ahead -= trade.qty
+                traded = trade.qty
+                if o.drop_ts == trade.ts_local:  # the book already showed this trade
+                    seen = min(traded, o.drop_qty)
+                    o.drop_qty -= seen
+                    traded -= seen
+                o.ahead -= traded
                 if o.ahead < 0:
                     filled = min(-o.ahead, o.qty)
                     o.ahead = 0
