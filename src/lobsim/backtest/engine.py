@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import heapq
 import itertools
+import time
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
@@ -112,10 +113,17 @@ class Context:
 
 
 class Backtest:
-    def __init__(self, strategy: Strategy, config: SimConfig = SimConfig(), inst: Instrument = BTCUSDT):
+    def __init__(
+        self,
+        strategy: Strategy,
+        config: SimConfig = SimConfig(),
+        inst: Instrument = BTCUSDT,
+        sample_every_us: int = 600_000_000,  # equity curve: one point per 10 minutes
+    ):
         self.strategy = strategy
         self.config = config
         self.inst = inst
+        self.sample_every_us = sample_every_us
 
     def run(self, market_events: Iterable[BookBatch | TradePrint]) -> Result:
         cfg = self.config
@@ -135,13 +143,29 @@ class Backtest:
 
         def flush_outbox() -> None:
             for request in ctx._outbox:
+                if request[0] != "cancel":
+                    result.orders_placed += 1
+                    result.qty_placed += request[-1]
                 push(ctx.now + cfg.order_latency_us, _ARRIVE, "order", request)
             ctx._outbox.clear()
 
+        started = time.perf_counter()
+        step = self.sample_every_us
+        unit = 10**-self.inst.price_decimals * 10**-self.inst.qty_decimals
+        result.unit_quote = unit
+
+        def sample(at: int) -> None:
+            mid = _mid(exchange)
+            if mid is not None:
+                pnl = (ctx.cash + ctx.position * mid) * unit - ctx.fees
+                result.equity.append((at, ctx.position, pnl))
+
         market: Iterator = iter(market_events)
         next_market = next(market, None)
+        next_sample = None
         if next_market is not None:
             ctx.now = next_market.ts_local
+            next_sample = next_market.ts_local - next_market.ts_local % step + step
         self.strategy.on_start(ctx)
         flush_outbox()
 
@@ -150,6 +174,10 @@ class Backtest:
             if next_market is not None and (not heap or (next_market.ts_local, 0) <= heap[0][:2]):
                 ev = next_market
                 next_market = next(market, None)
+                result.market_events += 1
+                while ev.ts_local >= next_sample:  # state as of each boundary we pass
+                    sample(next_sample)
+                    next_sample += step
                 if isinstance(ev, BookBatch):
                     notices = exchange.on_book(ev)
                 else:
@@ -158,12 +186,12 @@ class Backtest:
                 deliver(notices)
                 continue
 
-            time, _prio, _seq, kind, payload = heapq.heappop(heap)
+            at, _prio, _seq, kind, payload = heapq.heappop(heap)
             if kind == "order":
-                deliver(self._arrive(exchange, time, payload))
+                deliver(self._arrive(exchange, at, payload))
                 continue
 
-            ctx.now = time
+            ctx.now = at
             if kind == "market":
                 if isinstance(payload, BookBatch):
                     replica.apply(payload)
@@ -178,6 +206,9 @@ class Backtest:
         self.strategy.on_end(ctx)
         result.final_position = ctx.position
         result.final_cash = ctx.cash
+        result.fees_quote = ctx.fees
+        result.final_mid = _mid(exchange)
+        result.runtime_s = time.perf_counter() - started
         return result
 
     @staticmethod
@@ -199,6 +230,7 @@ class Backtest:
         elif isinstance(n, OrderFilled):
             signed = n.qty if n.side is Side.BUY else -n.qty
             ctx.position += signed
+            result.max_abs_position = max(result.max_abs_position, abs(ctx.position))
             ctx.cash -= signed * n.price
             ctx.fees += fee_quote(n.price, n.qty, n.liquidity, self.inst, self.config)
             result.fills.append(n)
@@ -208,3 +240,10 @@ class Backtest:
                     del ctx.open_orders[n.order_id]
         elif isinstance(n, (OrderCancelled, OrderRejected)):
             ctx.open_orders.pop(n.order_id, None)
+
+
+def _mid(exchange: SimExchange) -> float | None:
+    bid, ask = exchange.book.best_bid(), exchange.book.best_ask()
+    if bid is None or ask is None:
+        return None
+    return (bid + ask) / 2
