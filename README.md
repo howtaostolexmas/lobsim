@@ -16,6 +16,12 @@ uv sync
 uv run pytest
 ```
 
+`uv sync` also compiles the C++ engine (`lobsim._core`) with your system compiler;
+CMake is fetched automatically if you don't have it. `pyproject.toml` lists the C++
+sources as uv cache keys, so after you edit any file in `src/cpp/`, the next
+`uv run ...` rebuilds the extension. To force a rebuild:
+`uv sync --reinstall-package lobsim`.
+
 ```python
 from lobsim import OrderBook, Side
 

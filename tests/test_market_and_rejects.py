@@ -1,14 +1,14 @@
 import pytest
 
-from lobsim import Accepted, Cancelled, OrderBook, Rejected, Side, Trade
+from lobsim import Accepted, Cancelled, Rejected, Side, Trade
 
 
-def test_market_into_empty_book_cancels_all():
-    assert OrderBook().add_market(1, Side.BUY, 5) == [Accepted(1), Cancelled(1, 5)]
+def test_market_into_empty_book_cancels_all(make_book):
+    assert make_book().add_market(1, Side.BUY, 5) == [Accepted(1), Cancelled(1, 5)]
 
 
-def test_market_partial_then_cancel_remainder():
-    b = OrderBook()
+def test_market_partial_then_cancel_remainder(make_book):
+    b = make_book()
     b.add_limit(1, Side.SELL, 100, 2)
     assert b.add_market(2, Side.BUY, 5) == [
         Accepted(2),
@@ -18,8 +18,8 @@ def test_market_partial_then_cancel_remainder():
     assert b.best_bid() is None
 
 
-def test_market_fully_filled_has_no_cancel_and_never_rests():
-    b = OrderBook()
+def test_market_fully_filled_has_no_cancel_and_never_rests(make_book):
+    b = make_book()
     b.add_limit(1, Side.BUY, 100, 2)
     b.add_limit(2, Side.BUY, 90, 2)
     ev = b.add_market(3, Side.SELL, 3)
@@ -32,26 +32,26 @@ def test_market_fully_filled_has_no_cancel_and_never_rests():
 
 
 @pytest.mark.parametrize("qty", [0, -1])
-def test_non_positive_qty_rejected(qty):
-    b = OrderBook()
+def test_non_positive_qty_rejected(make_book, qty):
+    b = make_book()
     assert b.add_limit(1, Side.BUY, 100, qty) == [Rejected(1, "non_positive_qty")]
     assert b.add_market(1, Side.BUY, qty) == [Rejected(1, "non_positive_qty")]
     assert b.best_bid() is None
 
 
 @pytest.mark.parametrize("price", [0, -5])
-def test_non_positive_price_rejected(price):
-    b = OrderBook()
+def test_non_positive_price_rejected(make_book, price):
+    b = make_book()
     assert b.add_limit(1, Side.BUY, price, 1) == [Rejected(1, "non_positive_price")]
     assert b.best_bid() is None
 
 
-def test_qty_checked_before_price():
-    assert OrderBook().add_limit(1, Side.BUY, 0, 0) == [Rejected(1, "non_positive_qty")]
+def test_qty_checked_before_price(make_book):
+    assert make_book().add_limit(1, Side.BUY, 0, 0) == [Rejected(1, "non_positive_qty")]
 
 
-def test_duplicate_resting_id_rejected_but_reuse_after_fill_ok():
-    b = OrderBook()
+def test_duplicate_resting_id_rejected_but_reuse_after_fill_ok(make_book):
+    b = make_book()
     b.add_limit(1, Side.BUY, 100, 1)
     assert b.add_limit(1, Side.BUY, 99, 1) == [Rejected(1, "duplicate_id")]
     assert b.add_market(1, Side.SELL, 1) == [Rejected(1, "duplicate_id")]
@@ -60,8 +60,8 @@ def test_duplicate_resting_id_rejected_but_reuse_after_fill_ok():
     assert b.add_limit(1, Side.BUY, 99, 1) == [Accepted(1)]
 
 
-def test_reuse_after_cancel_ok():
-    b = OrderBook()
+def test_reuse_after_cancel_ok(make_book):
+    b = make_book()
     b.add_limit(1, Side.BUY, 100, 1)
     b.cancel(1)
     assert b.add_limit(1, Side.BUY, 100, 1) == [Accepted(1)]

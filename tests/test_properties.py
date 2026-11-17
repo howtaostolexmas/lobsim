@@ -1,13 +1,16 @@
 """Property-based tests: random order sequences must behave identically on
-the real OrderBook and the deliberately naive reference engine."""
+each real engine (Python and C++) and the deliberately naive reference engine."""
 
-from hypothesis import given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from reference import NaiveOrderBook
 
 from bench.orderflow import apply
 
-from lobsim import Accepted, Cancelled, OrderBook, Side, Trade
+from lobsim import Accepted, Cancelled, Side, Trade
+
+# make_book is a stateless factory, so sharing it across Hypothesis examples is safe.
+FIXTURE_OK = settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 
 # Small id and price ranges make duplicates, cancels of live orders and
 # crossing trades frequent. qty can be -1 or 0 so rejections get exercised.
@@ -27,29 +30,31 @@ def ops():
     return st.lists(op, min_size=1, max_size=200)
 
 
-@settings(max_examples=500)
+@settings(max_examples=500, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(ops())
-def test_matches_reference(ops):
-    a, b = OrderBook(), NaiveOrderBook()
+def test_matches_reference(make_book, ops):
+    a, b = make_book(), NaiveOrderBook()
     for o in ops:
         assert apply(a, o) == apply(b, o)
         assert a.depth(Side.BUY, 100) == b.depth(Side.BUY, 100)
         assert a.depth(Side.SELL, 100) == b.depth(Side.SELL, 100)
 
 
+@FIXTURE_OK
 @given(ops())
-def test_book_never_crossed(ops):
-    b = OrderBook()
+def test_book_never_crossed(make_book, ops):
+    b = make_book()
     for o in ops:
         apply(b, o)
         bid, ask = b.best_bid(), b.best_ask()
         assert bid is None or ask is None or bid < ask
 
 
+@FIXTURE_OK
 @given(ops())
-def test_quantity_conserved(ops):
+def test_quantity_conserved(make_book, ops):
     """For every accepted order: original == filled + cancelled + resting."""
-    b = OrderBook()
+    b = make_book()
     life: dict[int, dict[str, int]] = {}  # current lifetime of each order id
 
     def check(oid):
