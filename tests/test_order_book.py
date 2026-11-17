@@ -91,3 +91,20 @@ def test_cancel_fully_filled_is_unknown():
     b.add_limit(1, Side.SELL, 100, 2)
     b.add_limit(2, Side.BUY, 100, 2)
     assert b.cancel(1) == [Rejected(1, "unknown_id")]
+
+
+def test_depth_total_after_partial_fill_and_middle_cancel():
+    b = OrderBook()
+    for oid in (1, 2, 3):
+        b.add_limit(oid, Side.SELL, 100, 10)
+    b.add_market(9, Side.BUY, 4)  # order 1 -> 6 left
+    b.cancel(2)  # remove from the middle of the level
+    assert b.depth(Side.SELL, 1) == [(100, 16)]
+
+
+def test_level_empties_and_reappears_with_fresh_total():
+    b = OrderBook()
+    b.add_limit(1, Side.SELL, 100, 5)
+    b.cancel(1)
+    b.add_limit(2, Side.SELL, 100, 3)
+    assert b.depth(Side.SELL, 1) == [(100, 3)]

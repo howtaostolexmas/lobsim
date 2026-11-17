@@ -1,0 +1,26 @@
+{
+  "ops_per_sec": 704870.2552827969,
+  "kinds": {
+    "limit": {
+      "count": 599681,
+      "p50_ns": 1042,
+      "p99_ns": 4708
+    },
+    "cancel": {
+      "count": 299670,
+      "p50_ns": 416,
+      "p99_ns": 1083
+    },
+    "market": {
+      "count": 100649,
+      "p50_ns": 3458,
+      "p99_ns": 8334
+    }
+  },
+  "impl": "python",
+  "n": 1000000,
+  "seed": 42,
+  "runs": 5,
+  "python": "3.12.13",
+  "machine": "arm64 / macOS-26.5.1-arm64-arm-64bit"
+}

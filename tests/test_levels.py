@@ -36,3 +36,12 @@ def test_get_contains_and_remove():
 
 def test_side_opposite():
     assert Side.BUY.opposite is Side.SELL and Side.SELL.opposite is Side.BUY
+
+
+def test_best_item_returns_price_and_value():
+    lv = PriceLevels(Side.BUY)
+    assert lv.best_item() is None
+    lv.set(100, "a")
+    lv.set(101, "b")
+    assert lv.best_item() == (101, "b")
+    assert PriceLevels(Side.SELL).best_item() is None

@@ -1,0 +1,40 @@
+impl=python n=200,000 seed=42 runs=1 (medians)
+throughput: 192,945 ops/sec
+op           count    p50 ns    p99 ns
+limit      119,775     4,084    19,541
+cancel      60,148     1,208     3,625
+market      20,077    11,333    40,792
+         7656951 function calls (7655985 primitive calls) in 1.600 seconds
+
+   Ordered by: internal time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+   153824    0.266    0.000    0.652    0.000 order_book.py:131(_match)
+        1    0.149    0.149    0.456    0.456 orderflow.py:24(generate)
+   131768    0.118    0.000    0.680    0.000 order_book.py:56(add_limit)
+        1    0.094    0.094    1.132    1.132 run.py:41(one_run)
+   220017    0.068    0.000    0.096    0.000 random.py:242(_randbelow_with_getrandbits)
+  1018482    0.056    0.000    0.056    0.000 {method 'random' of '_random.Random' objects}
+   200000    0.054    0.000    0.159    0.000 random.py:291(randrange)
+   220000    0.052    0.000    1.055    0.000 orderflow.py:65(apply)
+   665609    0.049    0.000    0.049    0.000 {method 'append' of 'list' objects}
+   234480    0.048    0.000    0.108    0.000 sorteddict.py:483(peekitem)
+    94593    0.048    0.000    0.103    0.000 order_book.py:163(_rest)
+   234480    0.043    0.000    0.060    0.000 sortedlist.py:816(__getitem__)
+   234500    0.043    0.000    0.151    0.000 levels.py:44(best_item)
+   400000    0.030    0.000    0.030    0.000 {built-in method time.perf_counter_ns}
+   107612    0.030    0.000    0.047    0.000 orderflow.py:57(_geometric)
+    66176    0.029    0.000    0.056    0.000 order_book.py:79(cancel)
+   256644    0.019    0.000    0.019    0.000 order_book.py:114(_side)
+   234480    0.018    0.000    0.018    0.000 order_book.py:174(_crosses)
+   479704    0.018    0.000    0.018    0.000 {built-in method _operator.index}
+        7    0.018    0.003    0.018    0.003 {method 'sort' of 'list' objects}
+   102820    0.017    0.000    0.028    0.000 levels.py:28(get)
+   140210    0.017    0.000    0.017    0.000 {built-in method builtins.min}
+   139852    0.017    0.000    0.136    0.000 random.py:332(randint)
+   237150    0.016    0.000    0.016    0.000 {built-in method builtins.isinstance}
+    22056    0.016    0.000    0.267    0.000 order_book.py:67(add_market)
+   153824    0.016    0.000    0.016    0.000 order_book.py:117(_validate)
+   139905    0.015    0.000    0.015    0.000 {built-in method builtins.next}
+   304464    0.014    0.000    0.014    0.000 {method 'getrandbits' of '_random.Random' objects}
+   153883    0.014    0.000    0.014    0.000 {method 'extend' of 'list' objects}

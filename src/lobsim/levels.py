@@ -41,6 +41,12 @@ class PriceLevels(Generic[V]):
         index = -1 if self.side is Side.BUY else 0
         return self._levels.peekitem(index)[0]
 
+    def best_item(self) -> tuple[int, V] | None:
+        """Best (price, value) in one lookup instead of best() then get()."""
+        if not self._levels:
+            return None
+        return self._levels.peekitem(-1 if self.side is Side.BUY else 0)
+
     def items_from_best(self) -> Iterator[tuple[int, V]]:
         keys = self._levels.keys()
         ordered = reversed(keys) if self.side is Side.BUY else iter(keys)
