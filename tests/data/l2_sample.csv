@@ -1,0 +1,13 @@
+exchange,symbol,timestamp,local_timestamp,is_snapshot,side,price,amount
+test,TEST,90,95,false,bid,99.00,1.000
+test,TEST,100,100,true,bid,100.00,2.000
+test,TEST,100,100,true,bid,99.50,1.500
+test,TEST,100,100,true,ask,100.50,3.000
+test,TEST,100,100,true,ask,101.00,1.000
+test,TEST,110,200,false,bid,100.00,2.500
+test,TEST,110,200,false,ask,100.50,0
+test,TEST,120,300,false,ask,105.00,0
+test,TEST,130,300,false,bid,99.75,0.250
+test,TEST,200,400,true,bid,98.00,1.000
+test,TEST,200,400,true,ask,98.50,2.000
+test,TEST,210,500,false,ask,98.50,1.000

@@ -1,0 +1,4 @@
+exchange,symbol,timestamp,local_timestamp,id,side,price,amount
+test,TEST,150,200,t1,buy,100.50,0.500
+test,TEST,155,200,t2,sell,100.00,0.250
+test,TEST,350,450,t3,unknown,98.50,1.000
