@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <stdexcept>
 
 namespace lob {
 
@@ -36,6 +37,17 @@ void OrderBook::add_limit(int64_t id, Side side, int64_t price, int64_t qty,
     if (auto reason = validate(id, qty, price)) {
         out.push_back(rejected(id, *reason));
         return;
+    }
+    // Guard the level total against int64 overflow *before* changing anything.
+    // This check is exact: if our own side already has orders at `price`, the
+    // book is not crossed there, so this order cannot match and will rest with
+    // its full qty. If the level is empty, total 0 + qty always fits.
+    auto& own = side_levels(side);
+    if (auto it = own.find(price); it != own.end()) {
+        int64_t new_total;
+        if (__builtin_add_overflow(it->second.total, qty, &new_total)) {
+            throw std::overflow_error("total quantity at this price would exceed int64");
+        }
     }
     out.push_back(accepted(id));
     int64_t remaining = match(id, side, qty, price, out);

@@ -104,14 +104,20 @@ private:
 
 namespace pybind11::detail {
 // Let Python pass (kind, id, is_buy, price, qty) tuples as OpRec.
+// load() returns false for anything malformed; pybind11 then raises TypeError.
 template <>
 struct type_caster<OpRec> {
-    PYBIND11_TYPE_CASTER(OpRec, const_name("OpTuple"));
+    PYBIND11_TYPE_CASTER(OpRec, const_name("tuple[int, int, bool, int, int]"));
     bool load(handle src, bool) {
+        if (!isinstance<py::tuple>(src) || py::len(src) != 5) return false;
         auto t = reinterpret_borrow<py::tuple>(src);
-        value = OpRec{t[0].cast<int>(), t[1].cast<int64_t>(), t[2].cast<bool>(),
-                      t[3].cast<int64_t>(), t[4].cast<int64_t>()};
-        return true;
+        try {
+            value = OpRec{t[0].cast<int>(), t[1].cast<int64_t>(), t[2].cast<bool>(),
+                          t[3].cast<int64_t>(), t[4].cast<int64_t>()};
+        } catch (const py::cast_error&) {
+            return false;
+        }
+        return value.kind >= 0 && value.kind <= 2;  // 0 limit, 1 market, 2 cancel
     }
 };
 }  // namespace pybind11::detail
