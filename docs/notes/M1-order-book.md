@@ -48,11 +48,19 @@ n = number of price levels on a side, k = number of orders at one price.
 
 | Operation | Cost |
 |---|---|
-| Best bid / ask | O(log n) |
-| Add limit that rests | O(log n) for a new level, O(1) otherwise |
-| Match, per fill | O(1) to pop the order, plus O(log n) to drop an emptied level |
+| Best bid / ask | O(1) in practice (see note below) |
+| Add limit, no trade, existing level | O(1): one best-price check, a dict lookup, an append |
+| Add limit, no trade, new level | O(log n) to insert the price into the sorted keys |
+| Match, per fill | O(1) for the best-price check and popping the order, plus O(log n) when a level empties and is removed |
 | Cancel | O(1) lookup + **O(k)** to remove from the deque |
 | `depth(side, m)` | O(m · k), because it sums each level's orders |
+
+**Note on best price.** `SortedDict.peekitem` is documented as O(log n), which is a safe
+upper bound to quote. But `sortedcontainers` has a fast path for index `0` and `-1`
+(see `SortedList.__getitem__`): the first and last items are read directly, in O(1). We
+only ever ask for the first or last, so best-price lookups are effectively O(1). If an
+interviewer asks, say "O(log n) worst case by the docs, O(1) in practice because of the
+first/last fast path" and explain why.
 
 Two costs to fix in M2: `cancel` and `depth` both scan a whole level. Typical fixes are
 lazy deletion, an intrusive linked list for O(1) cancel, and a cached total per level for
@@ -69,8 +77,20 @@ lazy deletion, an intrusive linked list for O(1) cancel, and a cached total per 
      every operation.
   2. The book is never left crossed (best bid < best ask).
   3. For every order: original qty = filled + cancelled + still resting.
-- **Do the tests catch bugs?** We checked by changing `>=` to `>` in `_crosses` on
-  purpose. The reference comparison failed immediately.
+- **Do the tests catch bugs?** Yes. We broke the engine on purpose ("mutation testing"),
+  and each of these four bugs made the property suite fail:
+  - `>=` changed to `>` in `_crosses`
+  - LIFO instead of FIFO (`queue[-1]` instead of `queue[0]` in `_match`)
+  - `Cancelled` reporting qty + 1
+  - not deleting filled makers from `_orders`
+
+  To demo it yourself:
+  ```bash
+  sed -i '' 's/limit_price >= opposite_best/limit_price > opposite_best/' src/lobsim/order_book.py
+  uv run pytest tests/test_properties.py -q     # expect a failure + minimal example
+  git checkout src/lobsim/order_book.py          # undo the bug
+  ```
+  (On Linux, use `sed -i` without the `''`.)
 
 ## 5. Likely interview questions
 

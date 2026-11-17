@@ -51,13 +51,19 @@ nothing rests on the bid side.
 - Both are built on **`PriceLevels`**, a sorted map from price to value that
   iterates best price first.
 
+How this carries into the backtester (M4): real L2 data has no individual orders, so
+the replayed market lives in a `LevelBook`. The order-level matching logic is reused
+only for *our own* orders, together with a queue-position model. The shared core is
+`PriceLevels`.
+
 ## Design decisions
 
 - **Integer prices and quantities.** Prices are in ticks and quantities are in lots.
   Floats would make `0.1 + 0.2 != 0.3` a matching bug.
 - **Data structures.** Each side is a `SortedDict` of price → `deque` of orders, plus a
   dict from order id to order:
-  - Best price: O(log n).
+  - Best price: O(1) in practice (sortedcontainers reads the first/last key directly).
+  - Adding a new price level: O(log n).
   - Matching at a level: pops from the front of a deque, O(1).
   - Finding an order to cancel: O(1).
 - **Trades happen at the maker's price.** The resting order set the price; the
@@ -65,13 +71,14 @@ nothing rests on the bid side.
 - **No separate partial-fill event.** A `Trade` carries `maker_remaining` and
   `taker_remaining`, so a partial fill is any trade where those are above zero.
 - **Market orders never rest.** Any unfilled remainder is reported as `Cancelled`.
-- **Fixed rejection reasons.** The reasons are `non_positive_qty`, `non_positive_price`,
-  `duplicate_id` and `unknown_id`, always checked in that order. An id is only reserved
-  while its order rests in the book.
+- **Fixed rejection reasons.** New orders are checked in a fixed order: `non_positive_qty`,
+  then `non_positive_price` (limit orders only), then `duplicate_id`. A cancel can only
+  fail with `unknown_id`. An id is only reserved while its order rests in the book.
 - **How correctness is checked.** `tests/reference.py` is a deliberately naive engine:
   one list, scanned in full for every match. It is too simple to be subtly wrong.
-  [Hypothesis](https://hypothesis.readthedocs.io/) generates thousands of random
-  order sequences and requires both engines to emit identical events and depth.
+  [Hypothesis](https://hypothesis.readthedocs.io/) generates hundreds of random
+  order sequences per run (500 for the reference comparison, up to 200 operations
+  each) and requires both engines to emit identical events and depth.
   Other properties check that the book never stays crossed and that every order's
   quantity is conserved.
 - **Known cost: cancel is O(orders at that price).** The order is found in O(1), but
