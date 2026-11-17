@@ -27,6 +27,19 @@ def test_ids_are_unique_for_new_orders():
     assert len(ids) == len(set(ids))
 
 
+def test_cancels_mostly_hit_live_orders():
+    """Cancels should target orders that are still resting, so the benchmark
+    measures real cancels rather than the cheap unknown_id reject path."""
+    book = OrderBook()
+    cancels = rejected = 0
+    for op in generate(20_000, seed=6):
+        events = apply(book, op)
+        if op[0] == "cancel":
+            cancels += 1
+            rejected += isinstance(events[0], Rejected)
+    assert cancels > 0 and rejected == 0
+
+
 def test_flow_runs_on_engine_without_rejects_except_unknown_cancel():
     book = OrderBook()
     for op in generate(5_000, seed=4):

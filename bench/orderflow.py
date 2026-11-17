@@ -4,13 +4,18 @@ The goal is a flow that looks roughly like a real book: most limit orders
 rest a few ticks away from the mid, some cross, many get cancelled, and a few
 market orders sweep the top. The same seed always gives the same ops, so
 before/after timings compare like with like.
+
+To make cancels realistic (they should target orders that still rest), the
+generator replays its own ops on a private OrderBook and drops ids as soon as
+they are fully filled. This happens before any timing, so it costs nothing in
+the benchmark itself.
 """
 
 from __future__ import annotations
 
 import random
 
-from lobsim import Side
+from lobsim import OrderBook, Side, Trade
 
 Op = tuple
 
@@ -25,7 +30,8 @@ def generate(n: int, seed: int = 42) -> list[Op]:
     rng = random.Random(seed)  # private generator: never touches global random
     mid = START_MID
     next_id = 1
-    live: list[int] = []  # ids we may cancel (list + swap-remove = O(1) random pick)
+    live = _LiveSet()  # ids that currently rest in the book
+    sim = OrderBook()  # private book used only to learn which orders filled
     ops: list[Op] = []
 
     for _ in range(n):
@@ -40,18 +46,57 @@ def generate(n: int, seed: int = 42) -> list[Op]:
             else:
                 offset = _geometric(rng, GEOMETRIC_P)
                 price = mid - offset if side is Side.BUY else mid + offset
-            ops.append(("limit", next_id, side, price, rng.randint(1, 100)))
-            live.append(next_id)
+            op = ("limit", next_id, side, price, rng.randint(1, 100))
             next_id += 1
         elif r < P_LIMIT + P_CANCEL:
-            i = rng.randrange(len(live))
-            live[i], live[-1] = live[-1], live[i]
-            ops.append(("cancel", live.pop()))
+            op = ("cancel", live.pop_random(rng))
         else:
             side = Side.BUY if rng.random() < 0.5 else Side.SELL
-            ops.append(("market", next_id, side, rng.randint(1, 200)))
+            op = ("market", next_id, side, rng.randint(1, 200))
             next_id += 1
+
+        ops.append(op)
+        events = apply(sim, op)
+        for e in events:
+            if isinstance(e, Trade) and e.maker_remaining == 0:
+                live.discard(e.maker_id)  # fully filled: no longer cancellable
+        if op[0] == "limit" and sim.resting_qty(op[1]) is not None:
+            live.add(op[1])
     return ops
+
+
+class _LiveSet:
+    """A set that also supports picking a uniformly random member in O(1).
+
+    A list holds the members, a dict maps member -> its index in the list.
+    Removing swaps the member with the last element and pops, so both
+    add/remove and random pick are O(1).
+    """
+
+    def __init__(self) -> None:
+        self._items: list[int] = []
+        self._pos: dict[int, int] = {}
+
+    def __bool__(self) -> bool:
+        return bool(self._items)
+
+    def add(self, x: int) -> None:
+        self._pos[x] = len(self._items)
+        self._items.append(x)
+
+    def discard(self, x: int) -> None:
+        i = self._pos.pop(x, None)
+        if i is None:
+            return
+        last = self._items.pop()
+        if i < len(self._items):  # x was not the last element: move last into its slot
+            self._items[i] = last
+            self._pos[last] = i
+
+    def pop_random(self, rng: random.Random) -> int:
+        x = self._items[rng.randrange(len(self._items))]
+        self.discard(x)
+        return x
 
 
 def _geometric(rng: random.Random, p: float) -> int:
