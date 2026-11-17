@@ -5,6 +5,8 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from reference import NaiveOrderBook
 
+from bench.orderflow import apply
+
 from lobsim import Accepted, Cancelled, OrderBook, Side, Trade
 
 # Small id and price ranges make duplicates, cancels of live orders and
@@ -23,15 +25,6 @@ op = st.one_of(
 
 def ops():
     return st.lists(op, min_size=1, max_size=200)
-
-
-def apply(book, op):
-    kind, *args = op
-    if kind == "limit":
-        return book.add_limit(*args)
-    if kind == "market":
-        return book.add_market(*args)
-    return book.cancel(*args)
 
 
 @settings(max_examples=500)
