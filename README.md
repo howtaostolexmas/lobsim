@@ -82,6 +82,57 @@ Without an API key, Tardis serves only day 1 of each month. Its terms forbid
 redistributing the raw data, so `data/` is git-ignored, the test fixtures are synthetic,
 and only aggregate charts and statistics are committed.
 
+## Backtester (M4)
+
+`lobsim.backtest` replays a day of real market data. It simulates our own orders with
+**latency in both directions**, a **queue-position model** and **maker/taker fees**.
+
+```python
+from lobsim.backtest.engine import Backtest
+from lobsim.backtest.strategy import NaiveMarketMaker
+result = Backtest(NaiveMarketMaker(size_lots=100)).run(market_events)
+```
+
+```bash
+uv run --group viz python -m lobsim.backtest --day 2026-11-01 --symbol BTCUSDT --chart out.png
+```
+
+**How it avoids look-ahead.** The exchange simulator sees market data at its arrival time.
+The strategy sees it `feed_latency` later, through its own read-only copy of the book.
+Orders reach the exchange `order_latency` after they are sent. The strategy never holds a
+reference to the exchange or the data stream. A test walks the strategy's object graph to
+prove it.
+
+**The headline result** is a naive market maker run on the full day: −1,211 USDT after
+fees, and −163 USDT before fees. It loses before fees because of adverse selection: its
+quotes get filled just as the price moves through them. The full results, including the
+zero-fee, zero-latency and 10 ms runs, are in
+[docs/benchmarks/M4-backtest.md](docs/benchmarks/M4-backtest.md).
+
+### Fill model and known limits
+
+- **Aggressive orders** (market orders, or limits that cross on arrival) fill against the
+  **visible** opposite levels, best first, as taker. Any remainder is cancelled (IOC).
+  Our fills never change the replayed book (**no market impact**), so a resting remainder
+  would otherwise refill against the same liquidity forever.
+- **Resting orders** join behind the visible quantity at their price.
+  - A trade at our price, with the taker on the other side, consumes the queue ahead of
+    us. Once that runs out, the excess fills us as maker.
+  - A trade *through* our price, or the opposite side moving onto it, fills our whole
+    remainder.
+  - When a level shrinks, the queue ahead of us shrinks with it. We assume the cancelled
+    size was ahead of us, which is **optimistic**. A trade and the book update reporting
+    it never count twice.
+- **Cancels** take effect when they reach the exchange. A fill that lands first wins, and
+  the cancel is then rejected.
+- **Limits:**
+  - The queue position is an estimate, because L2 data has no individual orders.
+  - There is no market impact.
+  - Latency is a constant, with no jitter.
+  - Trades with an unknown taker side are ignored.
+  - At equal timestamps, market data is processed before our orders arrive
+    (pessimistic).
+
 ## What it does (M1)
 
 - **`OrderBook`**: limit orders, market orders and cancels with **price-time
@@ -94,9 +145,12 @@ and only aggregate charts and statistics are committed.
   iterates best price first.
 
 How this carries into the backtester (M4): real L2 data has no individual orders, so
-the replayed market lives in a `LevelBook`. The order-level matching logic is reused
-only for *our own* orders, together with a queue-position model. The shared core is
-`PriceLevels`.
+the replayed market lives in a `LevelBook`, built on the shared `PriceLevels` core. Our
+own simulated orders are tracked separately by `SimExchange` with a queue-position
+model. The M1 order-level matching engine is *not* used there: our quotes never trade
+with each other, so what matters is how they fill against the market, not FIFO matching
+among themselves. The original design expected to reuse it, and building M4 showed that
+wasn't needed.
 
 ## Design decisions
 
@@ -135,6 +189,6 @@ only for *our own* orders, together with a queue-position model. The shared core
 - **M1** ✅ Correct order book and matching engine (this)
 - **M2** ✅ Profile, optimize, and port the engine to C++ via pybind11, with benchmarks
 - **M3** ✅ Download and replay real L2 crypto market data
-- **M4** Backtester with latency, queue position and fees
+- **M4** ✅ Backtester with latency, queue position and fees
 
 See `docs/superpowers/specs/` for the full design and `docs/notes/` for study notes.

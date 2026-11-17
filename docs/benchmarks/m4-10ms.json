@@ -1,0 +1,24 @@
+{
+  "config": {
+    "day": "2026-11-01",
+    "feed_latency_us": 10000,
+    "hours": null,
+    "maker_fee_bps": 10.0,
+    "max_position_lots": 1000,
+    "order_latency_us": 10000,
+    "size_lots": 100,
+    "symbol": "BTCUSDT",
+    "taker_fee_bps": 10.0
+  },
+  "fees_quote": 865.652511141501,
+  "fill_ratio": 0.5667076593356126,
+  "fills": 25037,
+  "final_position": 0.00205,
+  "gross_pnl_quote": -118.41953024999998,
+  "maker_qty": 9.936770000000001,
+  "market_events": 2006458,
+  "max_abs_position": 0.01,
+  "orders_placed": 19597,
+  "pnl_quote": -984.072041391501,
+  "taker_qty": 1.169
+}
