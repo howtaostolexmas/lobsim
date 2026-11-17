@@ -79,6 +79,20 @@ performance story and the market-microstructure story. C is a possible later ext
 - Data: **free historical crypto data** with L2 incremental book updates and trades, for
   one liquid pair such as BTC-USDT (my call).
 - Language of code and docs: English (my call).
+- **How the engine carries into the backtester** (my call). L2 data has total quantity per
+  price but no individual orders, so it cannot be replayed through an order-level engine
+  faithfully. The design therefore splits into two layers:
+  - The **price-level book structure** from M1/M2, sorted levels with fast updates and the
+    C++ hot path, is the shared core. In M4 it holds the reconstructed market book.
+  - The **order-level matching logic** (FIFO, maker/taker) is reused in M4 for our own
+    orders only, together with the queue-position model.
+  M1's API must therefore expose level-quantity operations (set a level's quantity, read the
+  best levels) alongside order operations, and the C++ port must expose them too. The README
+  must describe the reuse in exactly these terms. It must not claim more.
+- **Our fills do not change the replayed market** (my call). This is the standard simple
+  model. The replayed book is never modified by our orders. To avoid the worst over-fill, an
+  aggressive order may not take more than the visible quantity at each level at that moment.
+  Market impact is listed under the README's known limits.
 
 ## Milestones
 
