@@ -54,13 +54,13 @@ Apple M3, 1M-op seeded workload, median of 5 runs. Full method and tables are in
 
 | Engine | Throughput |
 |---|---:|
-| Python (M1 baseline) | 0.76M ops/sec |
-| C++ called per op from Python | 1.11M ops/sec |
-| C++ with the whole op list inside C++ | **16.3M ops/sec (21×)** |
+| Python (M1 baseline) | 0.79M ops/sec |
+| C++ called per op from Python | 1.32M ops/sec |
+| C++ with the whole op list inside C++ | **16.2M ops/sec (20×)** |
 
-The headline lesson: per-op calls from Python spend about 93% of their time crossing
-the Python↔C++ boundary. Also, making cancel O(1) in Python cut a deep-level cancel
-from 30 µs to 0.4 µs, but did nothing on the shallow main workload. Measure before
+The headline lesson: per-op calls from Python spend about 92% of their time on the
+Python↔C++ boundary and harness, not in the engine. Also, making cancel O(1) in Python cut a deep-level cancel
+from 29 µs to 0.4 µs, but did nothing on the shallow main workload. Measure before
 optimizing.
 
 ## What it does (M1)

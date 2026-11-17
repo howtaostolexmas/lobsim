@@ -11,11 +11,12 @@ Usage: uv run python bench/deep_cancel.py --k 20000 [--impl python|cpp]
 from __future__ import annotations
 
 import argparse
+import json
 import random
+from pathlib import Path
 from time import perf_counter_ns
 
 from lobsim import OrderBook, Side
-from lobsim.fast import FastOrderBook
 
 
 def main() -> None:
@@ -23,9 +24,15 @@ def main() -> None:
     ap.add_argument("--k", type=int, default=20_000)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--impl", choices=["python", "cpp"], default="python")
+    ap.add_argument("--json", type=Path, help="append the result as one JSON line")
     args = ap.parse_args()
 
-    book = OrderBook() if args.impl == "python" else FastOrderBook()
+    if args.impl == "cpp":
+        from lobsim.fast import FastOrderBook  # imported lazily: absent on M1 checkouts
+
+        book = FastOrderBook()
+    else:
+        book = OrderBook()
     for oid in range(1, args.k + 1):
         book.add_limit(oid, Side.SELL, 100, 1)
     ids = list(range(1, args.k + 1))
@@ -35,7 +42,11 @@ def main() -> None:
     for oid in ids:
         book.cancel(oid)
     elapsed = perf_counter_ns() - t0
-    print(f"{args.impl} k={args.k:,}: {elapsed / args.k:,.0f} ns per cancel (mean)")
+    ns = elapsed / args.k
+    print(f"{args.impl} k={args.k:,}: {ns:,.0f} ns per cancel (mean)")
+    if args.json:
+        with args.json.open("a") as f:
+            f.write(json.dumps({"impl": args.impl, "k": args.k, "ns_per_cancel": ns}) + "\n")
 
 
 if __name__ == "__main__":

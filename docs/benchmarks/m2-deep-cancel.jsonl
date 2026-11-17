@@ -1,0 +1,6 @@
+{"impl": "python-m1", "k": 1000, "ns_per_cancel": 1784.208}
+{"impl": "python-m1", "k": 20000, "ns_per_cancel": 29292.66875}
+{"impl": "python", "k": 1000, "ns_per_cancel": 372.917}
+{"impl": "cpp", "k": 1000, "ns_per_cancel": 387.875}
+{"impl": "python", "k": 20000, "ns_per_cancel": 387.1917}
+{"impl": "cpp", "k": 20000, "ns_per_cancel": 395.6042}
