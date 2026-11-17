@@ -7,6 +7,7 @@ order-level OrderBook, and will hold the replayed market book in M3/M4.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from itertools import islice
 
 from lobsim.levels import PriceLevels
@@ -46,6 +47,10 @@ class LevelBook:
 
     def best_ask(self) -> int | None:
         return self._levels[Side.SELL].best()
+
+    def levels(self, side: Side) -> Iterator[tuple[int, int]]:
+        """All (price, qty) levels on one side, best first, without building a list."""
+        return self._levels[side].items_from_best()
 
     def depth(self, side: Side, n: int) -> list[tuple[int, int]]:
         return list(islice(self._levels[side].items_from_best(), n))

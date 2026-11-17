@@ -42,3 +42,12 @@ def test_depth_limit_and_clear():
     assert lb.depth(Side.SELL, 2) == [(100, 1), (101, 1)]
     lb.clear()
     assert lb.best_ask() is None and lb.depth(Side.SELL, 5) == []
+
+
+def test_levels_iterates_best_first_lazily():
+    lb = LevelBook()
+    for p in (100, 102, 101):
+        lb.set_level(Side.SELL, p, 1)
+    it = lb.levels(Side.SELL)
+    assert next(it) == (100, 1)
+    assert list(it) == [(101, 1), (102, 1)]

@@ -13,14 +13,29 @@ our price. L2 data has no individual orders, so this has to be a model:
     was in front of us (optimistic). Using min() also means a trade and the
     book update that reports the same trade never count twice.
   - Market moves through us (opposite best reaches our price): fill fully.
+
+Aggressive orders (market orders, or limits that cross on arrival) fill at
+once against the *visible* levels, best first, never taking more than a
+level shows, and pay the taker fee. Any remainder is cancelled (IOC): since
+we never remove liquidity from the replayed book, a resting remainder would
+otherwise keep matching the same quantity again and again.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from lobsim.backtest.types import Liquidity, Notice, OrderAccepted, OrderCancelled, OrderFilled, OrderRejected
+from lobsim.backtest.types import (
+    Liquidity,
+    Notice,
+    OrderAccepted,
+    OrderCancelled,
+    OrderFilled,
+    OrderRejected,
+    SimConfig,
+)
 from lobsim.level_book import LevelBook
+from lobsim.marketdata.instrument import Instrument
 from lobsim.marketdata.replay import BookBatch, Replayer, TradePrint
 from lobsim.types import Side
 
@@ -86,9 +101,18 @@ class SimExchange:
         reason = self._validate(order_id, qty, price)
         if reason:
             return [OrderRejected(ts, order_id, reason)]
+        opposite_best = self._opposite_best(side)
+        if opposite_best is not None and _crosses(side, price, opposite_best):
+            return self._take(ts, order_id, side, qty, limit_price=price)
         ahead = self.book.qty_at(side, price)  # 0 if we are a new, better price
         self._orders[order_id] = _SimOrder(order_id, side, price, qty, ahead)
         return [OrderAccepted(ts, order_id)]
+
+    def submit_market(self, ts: int, order_id: int, side: Side, qty: int) -> list[Notice]:
+        reason = self._validate(order_id, qty, price=None)
+        if reason:
+            return [OrderRejected(ts, order_id, reason)]
+        return self._take(ts, order_id, side, qty, limit_price=None)
 
     def cancel(self, ts: int, order_id: int) -> list[Notice]:
         o = self._orders.pop(order_id, None)
@@ -111,6 +135,25 @@ class SimExchange:
             return "duplicate_id"
         return None
 
+    def _opposite_best(self, side: Side) -> int | None:
+        return self.book.best_ask() if side is Side.BUY else self.book.best_bid()
+
+    def _take(
+        self, ts: int, order_id: int, side: Side, qty: int, limit_price: int | None
+    ) -> list[Notice]:
+        """Fill against visible opposite levels, best first; cancel the rest (IOC)."""
+        out: list[Notice] = [OrderAccepted(ts, order_id)]
+        remaining = qty
+        for price, visible in self.book.levels(side.opposite):
+            if remaining == 0 or (limit_price is not None and not _crosses(side, limit_price, price)):
+                break
+            filled = min(remaining, visible)
+            remaining -= filled
+            out.append(OrderFilled(ts, order_id, side, price, filled, Liquidity.TAKER, remaining))
+        if remaining:
+            out.append(OrderCancelled(ts, order_id, remaining))
+        return out
+
     def _fill(self, ts: int, o: _SimOrder, qty: int) -> OrderFilled:
         o.qty -= qty
         if o.qty == 0:
@@ -126,6 +169,17 @@ class SimExchange:
             elif o.side is Side.SELL and bid is not None and bid >= o.price:
                 out.append(self._fill(ts, o, o.qty))
         return out
+
+
+def _crosses(side: Side, limit_price: int, opposite_price: int) -> bool:
+    return limit_price >= opposite_price if side is Side.BUY else limit_price <= opposite_price
+
+
+def fee_quote(price: int, qty: int, liquidity: Liquidity, inst: Instrument, cfg: SimConfig) -> float:
+    """Fee in quote currency (e.g. USDT) for one fill. Negative means a rebate."""
+    bps = cfg.maker_fee_bps if liquidity is Liquidity.MAKER else cfg.taker_fee_bps
+    notional = price * 10**-inst.price_decimals * qty * 10**-inst.qty_decimals
+    return notional * bps / 10_000
 
 
 def _better_for_taker_than(o: _SimOrder, trade_price: int) -> bool:
